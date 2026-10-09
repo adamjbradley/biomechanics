@@ -1,0 +1,10 @@
+mujoco>=3.2
+gymnasium>=1.0
+stable-baselines3>=2.3
+torch>=2.1
+numpy>=1.26
+scipy>=1.11
+pyyaml>=6
+tensorboard>=2.15
+imageio>=2.31
+pytest>=7

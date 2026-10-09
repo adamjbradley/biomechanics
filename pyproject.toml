@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bowlrl"
+version = "0.1.0"
+description = "Reinforcement-learning optimisation of a cricket fast-bowling delivery (MuJoCo, Gymnasium, SB3, MyoSuite)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "Apache-2.0"}
+dependencies = [
+  "mujoco>=3.2",
+  "gymnasium>=1.0",
+  "stable-baselines3>=2.3",
+  "torch>=2.1",
+  "numpy>=1.26",
+  "scipy>=1.11",
+  "pyyaml>=6",
+  "tensorboard>=2.15",
+  "imageio>=2.31",
+]
+
+[project.optional-dependencies]
+capture = ["pose2sim", "opensim"]
+myo = ["myosuite>=2.5", "deprl"]
+dev = ["pytest>=7"]
+
+[tool.setuptools.packages.find]
+include = ["bowlrl*"]
+
+[tool.setuptools.package-data]
+bowlrl = ["models/*.xml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

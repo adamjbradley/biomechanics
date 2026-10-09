@@ -1,0 +1,284 @@
+<!--
+  bowler.xml — 16-segment torque-driven fast bowler + cricket ball + pitch.
+
+  Frame:  +x = direction of delivery (towards the batter), +z = up, +y = bowler's LEFT.
+          Right-arm bowler: bowling arm is on the -y side, ball welded to hand_r.
+
+  Segments (16): pelvis, torso (lumbar 3-DoF), head, upper_arm x2, forearm x2, hand x2,
+                 thigh x2, shank x2, foot x2.
+  Actuated DoF (23): lumbar 3, shoulder 3x2, elbow 1x2, wrist 1x2, hip 3x2, knee 1x2, ankle 1x2.
+
+  Anthropometrics: 1.85 m, 85 kg (de Leva 1996 segment fractions). Scale with
+  bowlrl.sim.scaling.scale_model() for a subject-specific body.
+
+  Sign conventions (positive direction):
+    lumbar_flex   : forward trunk flexion           (axis 0 -1 0)
+    lumbar_lat    : lateral flexion towards -y (bowling-arm side)   (axis 1 0 0)
+    lumbar_rot    : axial rotation, right-hand rule about +z
+    shoulder_flex : arm forward/up                  (axis 0 -1 0)
+    shoulder_abd  : arm away from the body          (axis ±1 0 0, side-specific)
+    shoulder_rot  : internal rotation about the humerus (axis 0 0 1)
+    elbow_flex    : flexion (0 = straight)          (axis 0 -1 0)
+    wrist_flex    : palmar flexion                  (axis 0 -1 0)
+    hip_flex      : thigh forward                   (axis 0 -1 0)
+    hip_abd       : thigh away from body
+    hip_rot       : internal rotation
+    knee_flex     : flexion (0 = straight)          (axis 0 1 0)
+    ankle_pf      : plantarflexion                  (axis 0 1 0)
+
+  Pitch geometry (Laws of Cricket): stumps 20.12 m apart; popping crease 1.22 m in front
+  of the stumps. Bowler's popping crease is at x = 0.  Batter's stumps at x = 18.90.
+-->
+<mujoco model="fast_bowler">
+  <compiler angle="degree" inertiafromgeom="true" autolimits="true"/>
+  <option timestep="0.001" gravity="0 0 -9.81" integrator="implicitfast" cone="elliptic" impratio="10">
+    <flag energy="enable"/>
+  </option>
+  <size memory="20M"/>
+
+  <default>
+    <joint type="hinge" limited="true" damping="1.0" armature="0.02" stiffness="0"/>
+    <geom type="capsule" condim="3" friction="1.0 0.005 0.0001" solref="0.008 1" solimp="0.95 0.99 0.001" margin="0.001" rgba="0.75 0.75 0.78 1"/>
+    <motor ctrllimited="true" ctrlrange="-1 1"/>
+    <site type="sphere" size="0.012" rgba="1 0 0 0.6"/>
+    <default class="foot">
+      <geom type="box" friction="1.2 0.01 0.0005" rgba="0.2 0.2 0.25 1"/>
+    </default>
+    <default class="marker">
+      <geom type="box" contype="0" conaffinity="0" rgba="1 1 1 0.9"/>
+    </default>
+  </default>
+
+  <asset>
+    <texture name="grid" type="2d" builtin="checker" rgb1="0.35 0.55 0.25" rgb2="0.30 0.50 0.22" width="256" height="256"/>
+    <material name="grass" texture="grid" texrepeat="40 40" reflectance="0"/>
+    <material name="pitch" rgba="0.80 0.72 0.55 1"/>
+    <material name="ball" rgba="0.55 0.05 0.05 1"/>
+  </asset>
+
+  <worldbody>
+    <light pos="5 0 8" dir="0 0 -1" diffuse="0.9 0.9 0.9"/>
+    <geom name="ground" type="plane" size="40 20 0.1" material="grass" friction="1.2 0.01 0.0005" condim="3"/>
+    <!-- pitch strip, 3.05 m wide, from bowler's end to batter's end -->
+    <geom name="pitch_strip" class="marker" pos="8.84 0 0.001" size="11.1 1.525 0.001" material="pitch"/>
+    <!-- creases -->
+    <geom name="bowler_popping_crease" class="marker" pos="0 0 0.002" size="0.01 1.32 0.001"/>
+    <geom name="bowler_bowling_crease" class="marker" pos="-1.22 0 0.002" size="0.01 1.32 0.001"/>
+    <geom name="batter_popping_crease" class="marker" pos="17.68 0 0.002" size="0.01 1.32 0.001"/>
+    <geom name="batter_bowling_crease" class="marker" pos="18.90 0 0.002" size="0.01 1.32 0.001"/>
+    <!-- stumps (visual only) -->
+    <geom name="stump_b_c" type="cylinder" contype="0" conaffinity="0" pos="18.90 0 0.355" size="0.019 0.355" rgba="0.9 0.85 0.6 1"/>
+    <geom name="stump_b_l" type="cylinder" contype="0" conaffinity="0" pos="18.90 0.114 0.355" size="0.019 0.355" rgba="0.9 0.85 0.6 1"/>
+    <geom name="stump_b_r" type="cylinder" contype="0" conaffinity="0" pos="18.90 -0.114 0.355" size="0.019 0.355" rgba="0.9 0.85 0.6 1"/>
+    <!-- landing target (moved at runtime) -->
+    <body name="target" pos="12.5 0.1 0.0">
+      <geom name="target_disc" type="cylinder" contype="0" conaffinity="0" size="0.15 0.002" rgba="1 0.2 0.1 0.6"/>
+      <site name="target_site" pos="0 0 0" size="0.02" rgba="1 0 0 1"/>
+    </body>
+
+    <!-- BOWLER -->
+    <body name="pelvis" pos="0 0 0.98">
+      <freejoint name="root"/>
+      <site name="pelvis_site" pos="0 0 0"/>
+      <geom name="pelvis_geom" type="box" size="0.09 0.14 0.07" mass="12.0" rgba="0.3 0.4 0.8 1"/>
+
+      <!-- torso via 3-DoF lumbar joint (L4/L5 proxy) -->
+      <body name="torso" pos="0 0 0.10">
+        <joint name="lumbar_flex" axis="0 -1 0" range="-25 70" damping="4" armature="0.05"/>
+        <joint name="lumbar_lat"  axis="1 0 0"  range="-45 45" damping="4" armature="0.05"/>
+        <joint name="lumbar_rot"  axis="0 0 1"  range="-50 50" damping="3" armature="0.05"/>
+        <site name="lumbar_site" pos="0 0 0"/>
+        <geom name="torso_geom" fromto="0 0 0.02 0 0 0.43" size="0.11" mass="30.0" rgba="0.3 0.4 0.8 1"/>
+        <geom name="chest_geom" type="box" pos="0 0 0.32" size="0.10 0.17 0.10" mass="0.001" contype="0" conaffinity="0" rgba="0.3 0.4 0.8 1"/>
+        <site name="sternum_site" pos="0.1 0 0.3"/>
+        <site name="shoulder_l_site" pos="0 0.20 0.45"/>
+        <site name="shoulder_r_site" pos="0 -0.20 0.45"/>
+
+        <body name="head" pos="0 0 0.50">
+          <geom name="head_geom" type="sphere" pos="0 0 0.10" size="0.11" mass="6.9" rgba="0.85 0.7 0.6 1"/>
+          <site name="head_site" pos="0 0 0.10"/>
+        </body>
+
+        <!-- LEFT arm (front arm for a right-arm bowler) -->
+        <body name="upper_arm_l" pos="0 0.20 0.45">
+          <joint name="shoulder_l_flex" axis="0 -1 0" range="-90 200" damping="1.5"/>
+          <joint name="shoulder_l_abd"  axis="1 0 0"  range="-30 170" damping="1.5"/>
+          <joint name="shoulder_l_rot"  axis="0 0 1"  range="-90 90"  damping="1.5"/>
+          <geom name="upper_arm_l_geom" fromto="0 0 0 0 0 -0.34" size="0.045" mass="2.4"/>
+          <body name="forearm_l" pos="0 0 -0.34">
+            <joint name="elbow_l_flex" axis="0 -1 0" range="-10 150" damping="1.0"/>
+            <site name="elbow_l_site" pos="0 0 0"/>
+            <geom name="forearm_l_geom" fromto="0 0 0 0 0 -0.27" size="0.035" mass="1.4"/>
+            <body name="hand_l" pos="0 0 -0.27">
+              <joint name="wrist_l_flex" axis="0 -1 0" range="-70 80" damping="0.5"/>
+              <geom name="hand_l_geom" fromto="0 0 0 0 0 -0.10" size="0.03" mass="0.5"/>
+              <site name="hand_l_site" pos="0 0 -0.10"/>
+            </body>
+          </body>
+        </body>
+
+        <!-- RIGHT arm (bowling arm) -->
+        <body name="upper_arm_r" pos="0 -0.20 0.45">
+          <joint name="shoulder_r_flex" axis="0 -1 0" range="-290 60" damping="1.5"/>
+          <joint name="shoulder_r_abd"  axis="-1 0 0" range="-30 170" damping="1.5"/>
+          <joint name="shoulder_r_rot"  axis="0 0 1"  range="-90 90"  damping="1.5"/>
+          <site name="shoulder_r_joint_site" pos="0 0 0"/>
+          <geom name="upper_arm_r_geom" fromto="0 0 0 0 0 -0.34" size="0.045" mass="2.4"/>
+          <body name="forearm_r" pos="0 0 -0.34">
+            <joint name="elbow_r_flex" axis="0 -1 0" range="-10 150" damping="1.0"/>
+            <site name="elbow_r_site" pos="0 0 0"/>
+            <geom name="forearm_r_geom" fromto="0 0 0 0 0 -0.27" size="0.035" mass="1.4"/>
+            <body name="hand_r" pos="0 0 -0.27">
+              <joint name="wrist_r_flex" axis="0 -1 0" range="-70 80" damping="0.5"/>
+              <site name="wrist_r_site" pos="0 0 0"/>
+              <geom name="hand_r_geom" fromto="0 0 0 0 0 -0.10" size="0.03" mass="0.5"/>
+              <!-- ball centre sits just beyond the fingertips, in front of the palm -->
+              <site name="ball_site" pos="0.03 0 -0.15" size="0.02" rgba="0 1 0 0.8"/>
+            </body>
+          </body>
+        </body>
+      </body>
+
+      <!-- LEFT leg (front leg for a right-arm bowler) -->
+      <body name="thigh_l" pos="0 0.09 -0.05">
+        <joint name="hip_l_flex" axis="0 -1 0" range="-30 120" damping="3" armature="0.05"/>
+        <joint name="hip_l_abd"  axis="1 0 0"  range="-45 30"  damping="3" armature="0.05"/>
+        <joint name="hip_l_rot"  axis="0 0 1"  range="-45 45"  damping="3" armature="0.05"/>
+        <site name="hip_l_site" pos="0 0 0"/>
+        <geom name="thigh_l_geom" fromto="0 0 0 0 0 -0.45" size="0.07" mass="8.5"/>
+        <body name="shank_l" pos="0 0 -0.45">
+          <joint name="knee_l_flex" axis="0 1 0" range="-2 150" damping="2" armature="0.05"/>
+          <site name="knee_l_site" pos="0 0 0"/>
+          <geom name="shank_l_geom" fromto="0 0 0 0 0 -0.455" size="0.05" mass="4.0"/>
+          <body name="foot_l" pos="0 0 -0.455">
+            <joint name="ankle_l_pf" axis="0 1 0" range="-30 50" damping="1.5" armature="0.03"/>
+            <site name="ankle_l_site" pos="0 0 0"/>
+            <geom name="foot_l_geom" class="foot" pos="0.06 0 -0.035" size="0.14 0.05 0.035" mass="1.2"/>
+            <site name="heel_l_site" pos="-0.06 0 -0.07"/>
+            <site name="toe_l_site" pos="0.20 0 -0.07"/>
+          </body>
+        </body>
+      </body>
+
+      <!-- RIGHT leg (back leg) -->
+      <body name="thigh_r" pos="0 -0.09 -0.05">
+        <joint name="hip_r_flex" axis="0 -1 0" range="-30 120" damping="3" armature="0.05"/>
+        <joint name="hip_r_abd"  axis="-1 0 0" range="-45 30"  damping="3" armature="0.05"/>
+        <joint name="hip_r_rot"  axis="0 0 1"  range="-45 45"  damping="3" armature="0.05"/>
+        <site name="hip_r_site" pos="0 0 0"/>
+        <geom name="thigh_r_geom" fromto="0 0 0 0 0 -0.45" size="0.07" mass="8.5"/>
+        <body name="shank_r" pos="0 0 -0.45">
+          <joint name="knee_r_flex" axis="0 1 0" range="-2 150" damping="2" armature="0.05"/>
+          <site name="knee_r_site" pos="0 0 0"/>
+          <geom name="shank_r_geom" fromto="0 0 0 0 0 -0.455" size="0.05" mass="4.0"/>
+          <body name="foot_r" pos="0 0 -0.455">
+            <joint name="ankle_r_pf" axis="0 1 0" range="-30 50" damping="1.5" armature="0.03"/>
+            <site name="ankle_r_site" pos="0 0 0"/>
+            <geom name="foot_r_geom" class="foot" pos="0.06 0 -0.035" size="0.14 0.05 0.035" mass="1.2"/>
+            <site name="heel_r_site" pos="-0.06 0 -0.07"/>
+            <site name="toe_r_site" pos="0.20 0 -0.07"/>
+          </body>
+        </body>
+      </body>
+    </body>
+
+    <!-- BALL -->
+    <!-- Initial position = ball_site in the zero pose (arm hanging): computed in the env at reset. -->
+    <body name="ball" pos="0.03 -0.20 0.77">
+      <freejoint name="ball_free"/>
+      <geom name="ball_geom" type="sphere" size="0.036" mass="0.156" material="ball" friction="0.6 0.005 0.0001" solref="0.004 1" contype="2" conaffinity="1"/>
+      <site name="ball_centre" pos="0 0 0" size="0.005"/>
+    </body>
+  </worldbody>
+
+  <contact>
+    <!-- the ball must not collide with the bowler while held -->
+    <exclude body1="ball" body2="hand_r"/>
+    <exclude body1="ball" body2="forearm_r"/>
+    <exclude body1="ball" body2="upper_arm_r"/>
+    <exclude body1="ball" body2="torso"/>
+    <exclude body1="ball" body2="head"/>
+    <exclude body1="ball" body2="pelvis"/>
+    <exclude body1="ball" body2="thigh_r"/>
+    <exclude body1="ball" body2="thigh_l"/>
+    <!-- adjacent segments -->
+    <exclude body1="pelvis" body2="torso"/>
+    <exclude body1="pelvis" body2="thigh_l"/>
+    <exclude body1="pelvis" body2="thigh_r"/>
+    <exclude body1="thigh_l" body2="shank_l"/>
+    <exclude body1="thigh_r" body2="shank_r"/>
+    <exclude body1="shank_l" body2="foot_l"/>
+    <exclude body1="shank_r" body2="foot_r"/>
+    <exclude body1="torso" body2="upper_arm_l"/>
+    <exclude body1="torso" body2="upper_arm_r"/>
+    <exclude body1="torso" body2="head"/>
+    <exclude body1="upper_arm_l" body2="forearm_l"/>
+    <exclude body1="upper_arm_r" body2="forearm_r"/>
+    <exclude body1="forearm_l" body2="hand_l"/>
+    <exclude body1="forearm_r" body2="hand_r"/>
+    <exclude body1="torso" body2="forearm_r"/>
+    <exclude body1="torso" body2="forearm_l"/>
+    <exclude body1="torso" body2="hand_r"/>
+    <exclude body1="torso" body2="hand_l"/>
+    <exclude body1="head" body2="upper_arm_r"/>
+    <exclude body1="head" body2="upper_arm_l"/>
+    <exclude body1="head" body2="forearm_r"/>
+    <exclude body1="head" body2="forearm_l"/>
+    <exclude body1="head" body2="hand_r"/>
+    <exclude body1="head" body2="hand_l"/>
+    <exclude body1="pelvis" body2="hand_r"/>
+    <exclude body1="pelvis" body2="hand_l"/>
+    <exclude body1="pelvis" body2="forearm_r"/>
+    <exclude body1="pelvis" body2="forearm_l"/>
+  </contact>
+
+  <equality>
+    <!-- ball-in-hand: deactivated at release -->
+    <weld name="ball_grip" body1="hand_r" body2="ball" solref="0.002 1" solimp="0.99 0.999 0.0001"/>
+  </equality>
+
+  <!-- Peak ISOMETRIC joint torques (N m), ctrl in [-1,1]. Mid-range literature estimates for a
+       trained adult male (dynamometry: Felton 2015/2024, Worthington 2013; shoulder values are
+       effective torque-generator peaks for the circumduction plane). The env applies a Hill-type
+       torque-velocity factor on top (EnvConfig.torque_velocity). Override per subject with
+       scaling.scale_model(joint_torques=...). -->
+  <actuator>
+    <motor name="a_lumbar_flex" joint="lumbar_flex" gear="400"/>
+    <motor name="a_lumbar_lat"  joint="lumbar_lat"  gear="250"/>
+    <motor name="a_lumbar_rot"  joint="lumbar_rot"  gear="180"/>
+
+    <motor name="a_shoulder_l_flex" joint="shoulder_l_flex" gear="150"/>
+    <motor name="a_shoulder_l_abd"  joint="shoulder_l_abd"  gear="120"/>
+    <motor name="a_shoulder_l_rot"  joint="shoulder_l_rot"  gear="60"/>
+    <motor name="a_elbow_l_flex"    joint="elbow_l_flex"    gear="80"/>
+    <motor name="a_wrist_l_flex"    joint="wrist_l_flex"    gear="25"/>
+
+    <motor name="a_shoulder_r_flex" joint="shoulder_r_flex" gear="220"/>
+    <motor name="a_shoulder_r_abd"  joint="shoulder_r_abd"  gear="160"/>
+    <motor name="a_shoulder_r_rot"  joint="shoulder_r_rot"  gear="70"/>
+    <motor name="a_elbow_r_flex"    joint="elbow_r_flex"    gear="90"/>
+    <motor name="a_wrist_r_flex"    joint="wrist_r_flex"    gear="30"/>
+
+    <motor name="a_hip_l_flex" joint="hip_l_flex" gear="320"/>
+    <motor name="a_hip_l_abd"  joint="hip_l_abd"  gear="200"/>
+    <motor name="a_hip_l_rot"  joint="hip_l_rot"  gear="120"/>
+    <motor name="a_knee_l_flex" joint="knee_l_flex" gear="300"/>
+    <motor name="a_ankle_l_pf"  joint="ankle_l_pf"  gear="220"/>
+
+    <motor name="a_hip_r_flex" joint="hip_r_flex" gear="320"/>
+    <motor name="a_hip_r_abd"  joint="hip_r_abd"  gear="200"/>
+    <motor name="a_hip_r_rot"  joint="hip_r_rot"  gear="120"/>
+    <motor name="a_knee_r_flex" joint="knee_r_flex" gear="300"/>
+    <motor name="a_ankle_r_pf"  joint="ankle_r_pf"  gear="220"/>
+  </actuator>
+
+  <sensor>
+    <!-- 6-axis interaction load across the lumbar joint: lumbar compression/shear proxy -->
+    <jointpos name="s_lumbar_flex" joint="lumbar_flex"/>
+    <jointpos name="s_lumbar_lat"  joint="lumbar_lat"/>
+    <jointpos name="s_lumbar_rot"  joint="lumbar_rot"/>
+    <velocimeter name="s_ball_vel" site="ball_centre"/>
+    <framepos name="s_ball_pos" objtype="site" objname="ball_centre"/>
+    <accelerometer name="s_pelvis_acc" site="pelvis_site"/>
+  </sensor>
+</mujoco>

@@ -1,0 +1,55 @@
+# docker compose run --rm cem        # technique optimisation
+# docker compose run --rm train      # PPO
+# docker compose run --rm eval       # evaluate best model + cues
+# docker compose up tensorboard      # http://localhost:6006
+# For a GPU: docker compose --profile gpu run --rm train-gpu
+x-base: &base
+  build: .
+  image: bowlrl:latest
+  volumes:
+    - ./runs:/app/runs
+    - ./data:/app/data
+    - ./configs:/app/configs
+  environment:
+    - MUJOCO_GL=egl
+    - OMP_NUM_THREADS=1        # one BLAS thread per env process; PPO/CEM parallelism is process-level
+  shm_size: "2gb"             # SubprocVecEnv / multiprocessing use shared memory
+
+services:
+  test:
+    <<: *base
+    command: pytest -q
+
+  cem:
+    <<: *base
+    command: python -m bowlrl.optim.cem --iters ${CEM_ITERS:-150} --pop ${CEM_POP:-96} --elites 10 --workers ${WORKERS:-8} --out data/reference
+
+  train:
+    <<: *base
+    command: python -m bowlrl.train --config configs/base.yaml --run runs/${RUN:-ppo_base} --n-envs ${WORKERS:-8}
+
+  eval:
+    <<: *base
+    command: python -m bowlrl.evaluate --run runs/${RUN:-ppo_base} --episodes 100 --video runs/${RUN:-ppo_base}/delivery.mp4
+
+  tensorboard:
+    <<: *base
+    command: tensorboard --logdir runs --host 0.0.0.0 --port 6006
+    ports: ["6006:6006"]
+
+  train-gpu:
+    <<: *base
+    profiles: ["gpu"]
+    build:
+      context: .
+      args:
+        BASE: nvidia/cuda:12.4.1-runtime-ubuntu22.04
+    image: bowlrl:cuda
+    command: python -m bowlrl.train --config configs/base.yaml --run runs/${RUN:-ppo_base} --n-envs ${WORKERS:-16}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

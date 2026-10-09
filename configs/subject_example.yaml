@@ -1,0 +1,24 @@
+# Subject-specific overrides. Merge on top of base.yaml:
+#   python -m bowlrl.train --config configs/base.yaml --override configs/subject_example.yaml
+# Peak isometric torques (N m) from dynamometry (e.g. Biodex / HUMAC) — replace with measured
+# values; unlisted joints keep template values x strength_scale.
+env:
+  subject_height_m: 1.91
+  subject_mass_kg: 86.9
+  strength_scale: 1.0
+  joint_torques:
+    hip_l_flex: 340
+    hip_r_flex: 340
+    knee_l_flex: 310
+    knee_r_flex: 310
+    ankle_l_pf: 230
+    ankle_r_pf: 230
+    lumbar_flex: 420
+    lumbar_lat: 260
+    lumbar_rot: 190
+    shoulder_r_flex: 230
+    shoulder_r_abd: 165
+    elbow_r_flex: 95
+    wrist_r_flex: 32
+  reference: data/reference/subject01_reference.csv   # from bowlrl.capture.opensim_to_reference
+  target_xy: [12.5, 0.10]
