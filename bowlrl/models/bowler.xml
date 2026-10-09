@@ -35,6 +35,9 @@
     <flag energy="enable"/>
   </option>
   <size memory="20M"/>
+  <visual>
+    <global offwidth="1280" offheight="720"/>
+  </visual>
 
   <default>
     <joint type="hinge" limited="true" damping="1.0" armature="0.02" stiffness="0"/>

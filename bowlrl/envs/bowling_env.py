@@ -593,6 +593,9 @@ class FastBowlingEnv(gym.Env):
         if self.render_mode != "rgb_array":
             return None
         if self._renderer is None:
+            # make sure the offscreen framebuffer is large enough (foreign models may use the 640x480 default)
+            self.model.vis.global_.offwidth = max(int(self.model.vis.global_.offwidth), 854)
+            self.model.vis.global_.offheight = max(int(self.model.vis.global_.offheight), 480)
             self._renderer = mujoco.Renderer(self.model, height=480, width=854)
             self._cam = mujoco.MjvCamera()
             self._cam.type = mujoco.mjtCamera.mjCAMERA_FREE
